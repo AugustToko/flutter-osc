@@ -6,7 +6,7 @@ class NetUtils {
   static Future<String> get(String url, {Map<String, String> params}) async {
     if (params != null && params.isNotEmpty) {
       // 如果参数不为空，则将参数拼接到URL后面
-      StringBuffer sb = new StringBuffer("?");
+      StringBuffer sb = StringBuffer("?");
       params.forEach((key, value) {
         sb.write("$key" + "=" + "$value" + "&");
       });
@@ -14,13 +14,19 @@ class NetUtils {
       paramStr = paramStr.substring(0, paramStr.length - 1);
       url += paramStr;
     }
-    http.Response res = await http.get(url);
+    http.Response res = await http.get(url, headers: getCommonHeader());
     return res.body;
   }
 
   // post请求
   static Future<String> post(String url, {Map<String, String> params}) async {
-    http.Response res = await http.post(url, body: params);
+    http.Response res = await http.post(url, body: params, headers: getCommonHeader());
     return res.body;
+  }
+
+  static Map<String, String> getCommonHeader() {
+    Map<String, String> header = Map();
+    header['is_flutter_osc'] = "1";
+    return header;
   }
 }

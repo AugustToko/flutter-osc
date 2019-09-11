@@ -9,10 +9,12 @@ import 'package:flutter_osc/util/ThemeUtils.dart';
 import 'package:flutter_osc/widgets/CommonButton.dart';
 import 'package:flutter_webview_plugin/flutter_webview_plugin.dart';
 
+import 'AboutPage.dart';
+
 // 新的登录界面，隐藏WebView登录页面
 class NewLoginPage extends StatefulWidget {
   @override
-  State<StatefulWidget> createState() => new NewLoginPageState();
+  State<StatefulWidget> createState() => NewLoginPageState();
 }
 
 class NewLoginPageState extends State<NewLoginPage> {
@@ -31,22 +33,26 @@ class NewLoginPageState extends State<NewLoginPage> {
   bool isLoadingCallbackPage = false;
   // 是否正在登录
   bool isOnLogin = false;
+  // 是否隐藏输入的文本
+  bool obscureText = true;
+  // 是否解析了结果
+  bool parsedResult = false;
 
-  final usernameCtrl = new TextEditingController(text: '');
-  final passwordCtrl = new TextEditingController(text: '');
+  final usernameCtrl = TextEditingController(text: '');
+  final passwordCtrl = TextEditingController(text: '');
 
   // 检查当前是否是输入账号密码界面，返回1表示是，0表示否
   final scriptCheckIsInputAccountPage = "document.getElementById('f_email') != null";
 
-  final jsCtrl = new TextEditingController(text: 'document.getElementById(\'f_email\') != null');
-  GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey();
+  final jsCtrl = TextEditingController(text: 'document.getElementById(\'f_email\') != null');
+  GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey();
 
   // URL变化监听器
   StreamSubscription<String> _onUrlChanged;
   // WebView加载状态变化监听器
   StreamSubscription<WebViewStateChanged> _onStateChanged;
   // 插件提供的对象，该对象用于WebView的各种操作
-  FlutterWebviewPlugin flutterWebViewPlugin = new FlutterWebviewPlugin();
+  FlutterWebviewPlugin flutterWebViewPlugin = FlutterWebviewPlugin();
 
   @override
   void initState() {
@@ -71,7 +77,7 @@ class NewLoginPageState extends State<NewLoginPage> {
           });
           if (isLoadingCallbackPage) {
             // 当前是回调页面，则调用js方法获取数据，延迟加载防止get()获取不到数据
-            new Timer(const Duration(seconds: 1), () {
+            Timer(const Duration(seconds: 1), () {
               parseResult();
             });
             return;
@@ -95,14 +101,15 @@ class NewLoginPageState extends State<NewLoginPage> {
               break;
           }
           break;
+        case WebViewState.abortLoad:
+          break;
       }
     });
     _onUrlChanged = flutterWebViewPlugin.onUrlChanged.listen((url) {
       // 登录成功会跳转到自定义的回调页面，该页面地址为http://yubo725.top/osc/osc.php?code=xxx
       // 该页面会接收code，然后根据code换取AccessToken，并将获取到的token及其他信息，通过js的get()方法返回
-      if (url != null && url.length > 0 && url.contains("osc/osc.php?code=")) {
+      if (url != null && url.length > 0 && url.contains("/logincallback?")) {
         isLoadingCallbackPage = true;
-        print("URL变为回调页");
       }
     });
   }
@@ -136,7 +143,11 @@ class NewLoginPageState extends State<NewLoginPage> {
 
   // 解析WebView中的数据
   void parseResult() {
-    flutterWebViewPlugin.evalJavascript("get();").then((result) {
+    if (parsedResult) {
+      return;
+    }
+    parsedResult = true;
+    flutterWebViewPlugin.evalJavascript("window.atob(get())").then((result) {
       // result json字符串，包含token信息
       if (result != null && result.length > 0) {
         // 拿到了js中的数据
@@ -162,28 +173,30 @@ class NewLoginPageState extends State<NewLoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    var loginBtn = new Builder(builder: (ctx) {
-      return new CommonButton(text: "登录", onTap: () {
+    var loginBtn = Builder(builder: (ctx) {
+      return CommonButton(text: "登录", onTap: () {
         if (isOnLogin) return;
         // 拿到用户输入的账号密码
         String username = usernameCtrl.text.trim();
         String password = passwordCtrl.text.trim();
         if (username.isEmpty || password.isEmpty) {
-          Scaffold.of(ctx).showSnackBar(new SnackBar(
-            content: new Text("账号和密码不能为空！"),
+          Scaffold.of(ctx).showSnackBar(SnackBar(
+            content: Text("账号和密码不能为空！"),
           ));
           return;
         }
+        // 关闭键盘
+        FocusScope.of(context).requestFocus(FocusNode());
         // 发送给webview，让webview登录后再取回token
         autoLogin(username, password);
       });
     });
     var loadingView;
     if (isOnLogin) {
-      loadingView = new Center(
-        child: new Padding(
+      loadingView = Center(
+        child: Padding(
           padding: const EdgeInsets.fromLTRB(0, 30, 0, 0),
-          child: new Column(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
               CupertinoActivityIndicator(),
@@ -193,43 +206,43 @@ class NewLoginPageState extends State<NewLoginPage> {
         )
       );
     } else {
-      loadingView = new Center();
+      loadingView = Center();
     }
-    return new Scaffold(
-      appBar: new AppBar(
-        title: new Text("登录", style: new TextStyle(color: Colors.white)),
-        iconTheme: new IconThemeData(color: Colors.white),
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("登录", style: TextStyle(color: Colors.white)),
+        iconTheme: IconThemeData(color: Colors.white),
       ),
-      body: new Container(
+      body: Container(
         padding: const EdgeInsets.all(10.0),
-        child: new Column(
+        child: Column(
           children: <Widget>[
-            new Container(
+            Container(
               width: MediaQuery.of(context).size.width,
               height: 0.0,
-              child: new WebviewScaffold(
+              child: WebviewScaffold(
                 key: _scaffoldKey,
-                url: Constants.LOGIN_URL, // 登录的URL
                 hidden: true,
+                url: Constants.loginUrl, // 登录的URL
                 withZoom: true,  // 允许网页缩放
                 withLocalStorage: true, // 允许LocalStorage
                 withJavascript: true, // 允许执行js代码
               ),
             ),
-            new Center(child: new Text("请使用OSC帐号密码登录")),
-            new Container(height: 20.0),
-            new Row(
+            Center(child: Text("请使用OSC帐号密码登录")),
+            Container(height: 20.0),
+            Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: <Widget>[
-                new Text("用户名："),
-                new Expanded(child: new TextField(
+                Text("用户名："),
+                Expanded(child: TextField(
                   controller: usernameCtrl,
-                  decoration: new InputDecoration(
+                  decoration: InputDecoration(
                     hintText: "OSC帐号/注册邮箱",
-                    hintStyle: new TextStyle(
+                    hintStyle: TextStyle(
                         color: const Color(0xFF808080)
                     ),
-                    border: new OutlineInputBorder(
+                    border: OutlineInputBorder(
                         borderRadius: const BorderRadius.all(const Radius.circular(6.0))
                     ),
                     contentPadding: const EdgeInsets.all(10.0)
@@ -237,55 +250,67 @@ class NewLoginPageState extends State<NewLoginPage> {
                 ))
               ],
             ),
-            new Container(height: 20.0),
-            new Row(
+            Container(height: 20.0),
+            Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: <Widget>[
-                new Text("密　码："),
-                new Expanded(child: new TextField(
+                Text("密　码："),
+                Expanded(child: TextField(
                   controller: passwordCtrl,
-                  obscureText: true,
-                  decoration: new InputDecoration(
+                  obscureText: obscureText,
+                  decoration: InputDecoration(
                     hintText: "登录密码",
-                    hintStyle: new TextStyle(
+                    hintStyle: TextStyle(
                         color: const Color(0xFF808080)
                     ),
-                    border: new OutlineInputBorder(
+                    border: OutlineInputBorder(
                         borderRadius: const BorderRadius.all(const Radius.circular(6.0))
                     ),
                     contentPadding: const EdgeInsets.all(10.0)
                   ),
-                ))
+                )),
+                InkWell(
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.center,
+                    child: Image.asset("images/ic_eye.png", width: 20, height: 20),
+                  ),
+                  onTap: () {
+                    setState(() {
+                      obscureText = !obscureText;
+                    });
+                  },
+                )
               ],
             ),
-            new Container(height: 20.0),
+            Container(height: 20.0),
             loginBtn,
-            new Expanded(
-              child: new Column(
+            Expanded(
+              child: Column(
                 children: <Widget>[
-                  new Expanded(
+                  Expanded(
                     child: loadingView
                   ),
-                  new Container(
-                    margin: const EdgeInsets.fromLTRB(0.0, 0.0, 0.0, 10.0),
-                    alignment: Alignment.bottomCenter,
-                    child: new InkWell(
-                      child: new Padding(
-                          padding: const EdgeInsets.all(10.0),
-                          child: new Text("使用WebView登录方式", style: new TextStyle(fontSize: 13.0, color: ThemeUtils.currentColorTheme))
-                      ),
-                      onTap: () async {
-//                        Navigator.pop(context);
-                        // 跳转到LoginPage
-                        final result = await Navigator.push(context, new MaterialPageRoute(builder: (context) {
-                          return new LoginPage();
-                        }));
-                        if (result != null && result == "refresh") {
-                          Navigator.pop(context, "refresh");
-                        }
-                      },
-                    ),
-                  ),
+//                  Container(
+//                    margin: const EdgeInsets.fromLTRB(0.0, 0.0, 0.0, 10.0),
+//                    alignment: Alignment.bottomCenter,
+//                    child: InkWell(
+//                      child: Padding(
+//                          padding: const EdgeInsets.all(10.0),
+//                          child: Text("使用WebView登录方式", style: TextStyle(fontSize: 13.0, color: ThemeUtils.currentColorTheme))
+//                      ),
+//                      onTap: () async {
+//                        // 跳转到LoginPage
+//                        final result = await Navigator.push(context, MaterialPageRoute(builder: (context) {
+//                          return LoginPage();
+//                        }));
+//                        if (result != null && result == "refresh") {
+//                          Navigator.pop(context, "refresh");
+//                        }
+//                      },
+//                    ),
+//                  ),
                 ],
               )
             )
